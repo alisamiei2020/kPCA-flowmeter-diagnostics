@@ -119,7 +119,7 @@ def pca(Z):
             model.explained_variance_, model.explained_variance_ratio_)
 
 
-def biplot(ax, T, A, y, names, pcs=(0, 1), n_arrows=15, circle=False, evr=None):
+def biplot(ax, T, A, y, names, pcs=(0, 1), n_arrows=15, circle=False, evr=None, prefix="PC"):
     """Scores T coloured by class, plus arrows A (one row per variable).
 
     A is either the loadings P or the correlations P * sqrt(lam). Only the
@@ -159,11 +159,68 @@ def biplot(ax, T, A, y, names, pcs=(0, 1), n_arrows=15, circle=False, evr=None):
 
     ax.axhline(0, color="#d6d5d0", linewidth=0.6, zorder=0)
     ax.axvline(0, color="#d6d5d0", linewidth=0.6, zorder=0)
-    lab = [f"PC{p + 1}" + (f" ({evr[p]:.1%})" if evr is not None else "") for p in pcs]
+    lab = [f"{prefix}{p + 1}" + (f" ({evr[p]:.1%})" if evr is not None else "") for p in pcs]
     ax.set_xlabel(lab[0])
     ax.set_ylabel(lab[1])
     return scale
 
+
+
+def biplot_grid(T, A, y, names, evr, title, planes=None, circle=False, prefix="PC", n_arrows=15):
+    """Biplots for several planes (default PC1-2, PC2-3, ..., PC6-7) in a 2 x 3 grid."""
+    import matplotlib.pyplot as plt
+    planes = planes or [(k, k + 1) for k in range(6)]
+    fig, axes = plt.subplots(2, 3, figsize=(15, 9.5))
+    for ax, pcs in zip(axes.flat, planes):
+        biplot(ax, T, A, y, names, pcs=pcs, n_arrows=n_arrows, circle=circle, evr=evr, prefix=prefix)
+        ax.set_aspect("equal", adjustable="datalim")
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="upper center", ncol=3, frameon=False, bbox_to_anchor=(0.5, 0.965))
+    fig.suptitle(title, fontsize=13)
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
+    return fig
+
+
+def score_matrix(T, y, evr, title, n_pc=7, prefix="PC"):
+    """Scatter plots of the scores for every pair of the first n_pc components."""
+    import matplotlib.pyplot as plt
+    fig, axes = plt.subplots(n_pc, n_pc, figsize=(13, 13))
+    for a in range(n_pc):
+        for b in range(n_pc):
+            ax = axes[a, b]
+            if a == b:
+                ax.text(0.5, 0.5, f"{prefix}{a + 1}\n{100 * evr[a]:.1f}%", ha="center", va="center",
+                        fontsize=11, transform=ax.transAxes)
+                ax.set_xticks([]); ax.set_yticks([])
+                ax.spines[:].set_visible(False)
+            elif a > b:
+                for c in CLASS_NAMES:
+                    m = y == c
+                    ax.scatter(T[m, b], T[m, a], s=9, color=CLASS_COLORS[c],
+                               edgecolor=SURFACE, linewidth=0.3, label=CLASS_NAMES[c])
+                ax.tick_params(labelsize=6)
+            else:
+                ax.axis("off")
+            if a == n_pc - 1 and b < n_pc - 1:
+                ax.set_xlabel(f"{prefix}{b + 1}")
+            if b == 0 and a > 0:
+                ax.set_ylabel(f"{prefix}{a + 1}")
+    handles, labels = axes[1, 0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="upper right", bbox_to_anchor=(0.9, 0.85), frameon=False, fontsize=11,
+               markerscale=2)
+    fig.suptitle(title, y=0.92, fontsize=13)
+    return fig
+
+
+def correlation_loadings(Z, T):
+    """Pearson correlation of every variable (columns of Z) with every score column of T (p x k).
+
+    Used as biplot arrows for kPCA, which has no loadings. For linear PCA on
+    autoscaled data this equals P * sqrt(lambda).
+    """
+    Zs = (Z - Z.mean(axis=0)) / Z.std(axis=0, ddof=1)
+    Ts = (T - T.mean(axis=0)) / T.std(axis=0, ddof=1)
+    return Zs.T @ Ts / (len(Z) - 1)
 
 # ---------------------------------------------------------------------------
 # Kernel PCA

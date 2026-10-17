@@ -55,7 +55,8 @@ samples.
 ## Choosing the kernel settings (M4)
 
 - **Criterion: balanced kNN accuracy only** (k = 5) on the first 2 kPCs (3 and 7 reported too), with
-  repeated stratified 5-fold cross-validation and a fixed random seed. Visual separation is judged in
+  repeated stratified 5-fold cross-validation (10 repeats → 50 train/test splits; each sample
+  tested 10 times) and a fixed random seed. Visual separation is judged in
   the biplots, not by a metric.
 - **Everything is refitted on each training fold:** z-scoring (same `zscore`, n − 1), the median distance
   that sets σ, and kPCA. Test samples are only transformed.
@@ -64,6 +65,8 @@ samples.
   (largest σ, lowest degree).
 - **Limitation:** choosing and scoring on the same cross-validation is slightly optimistic; nested CV
   is an optional extra.
+  The standard error (std of the 50 split scores / √50) treats the splits as independent, but the
+  10 repeats reuse the same samples, so it understates the uncertainty somewhat.
 
 ## Milestones
 
@@ -73,7 +76,7 @@ samples.
 | **M2** | `02_pca_baseline.ipynb` | `pca`, `biplot` (loading or correlation arrows) | check cell (T = ZP, var(T) = λ, corr = p√λ); scree; score matrix PC1–7; loading and correlation biplots for PC1–2 … PC6–7 |
 | **M3** | `03_kpca.ipynb` | `median_distance`, `kernel_matrix`, `kpca` | linear kPCA = PCA; centring and eigenvalues match formulas; kernel matrices, scree, score plots per kernel (default settings) |
 | **M4** | `04_kernel_settings.ipynb` | `cv_balanced_accuracy` (everything refitted per fold) | accuracy curves over σ / degree per kernel; chosen setting per kernel; fixed random seed |
-| **M5** | `05_kpca_biplots.ipynb` | correlation arrows for kPCA | linear-kernel arrows match M2; biplots kPC1–2 … kPC6–7 per kernel with the chosen settings; final comparison |
+| **M5** | `05_kpca_biplots.ipynb` | `correlation_loadings`, `score_matrix`, `biplot_grid` | linear-kernel arrows match M2; kPC1–2 comparison of 4 kernels; score matrix and biplots kPC1–2 … kPC6–7 for poly d=2, Gaussian and Cauchy at default settings (option B); confusion matrices; final comparison |
 | **M6** | `report/report.md` | – | every notebook runs top to bottom; the report answers both questions |
 | *Extra* | – | healthy-constant variables on their own; PyTorch kernel learning; Matérn; T² charts | if time allows |
 
