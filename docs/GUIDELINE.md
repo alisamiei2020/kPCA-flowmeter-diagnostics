@@ -82,7 +82,7 @@ samples.
 | **M4** | `04_kernel_settings.ipynb` | `cv_balanced_accuracy` (everything refitted per fold) | accuracy curves over σ / degree per kernel; chosen setting per kernel; fixed random seed |
 | **M5** | `05_kpca_biplots.ipynb` | `correlation_loadings`, `score_matrix`, `biplot_grid` | linear-kernel arrows match M2; kPC1–2 comparison of 4 kernels; score matrix and biplots kPC1–2 … kPC6–7 for poly d=2, Gaussian and Cauchy at default settings (option B); confusion matrices; final comparison |
 | **M6** | notebooks 04 and 05 updated | `operating_point_groups`, `cv_splits`, grouped option in `cv_balanced_accuracy` | no group split between training and test; random-vs-grouped comparison; chosen settings unchanged; per-sample errors |
-| **M7** | `06_kernel_mspc.ipynb` | kernel MSPC (healthy-only kPCA, T² and SPE limits) | control charts per kernel (linear, poly, Gaussian, Cauchy); σ / degree by grid search on the monitoring loss ρ_b with grouped CV; detection and false-alarm rates |
+| **M7** | `06_kernel_mspc.ipynb` | `kmspc_fit`, `kmspc_stats`, `kmspc_model`, `kmspc_monitor`, `oos_limits`, `cv_monitoring` | linear T²/SPE equal PCA formulas; healthy-only model with healthy scaling; out-of-sample (leave-one-healthy-group-out) limits, compared with training-sample limits; σ / degree and H = 1–4 (Kaiser bound) by grid search on ρ_b (alarm = T² or SPE) with grouped CV; control charts (6 settings + 3-row report version); T² vs SPE |
 | **M8** | `report/report.md` | – | every notebook runs top to bottom; the report answers both questions |
 | *Extra* | – | healthy-constant variables on their own; per-variable kernel parameters | if time allows |
 

@@ -340,3 +340,131 @@ def cv_balanced_accuracy(X, y, kind, factor=None, degree=None, n_comp=(2, 3, 7),
                 wrong[te] += pred != y[te]
 
     return {q: np.array(v) for q, v in scores.items()}, conf, wrong
+
+
+# ---------------------------------------------------------------------------
+# Kernel MSPC: kPCA of healthy data, Hotelling T2 and SPE with control limits
+# ---------------------------------------------------------------------------
+def kmspc_fit(Zh, kind, sigma=None, degree=None, n_comp=4):
+    """Fit a monitoring model on healthy (autoscaled) training samples Zh (n x p).
+
+    kPCA of the centred kernel matrix Kc = U diag(lam) U'; training scores
+    t_ik = sqrt(lam_k) u_ik. For every number of components H = 1..n_comp the
+    control limits are mean + 3 std of the training T2 and SPE (as in the
+    k-mspc toolbox).
+    """
+    K = kernel_matrix(Zh, kind, sigma=sigma, degree=degree)
+    col_mean, all_mean = K.mean(axis=0), K.mean()
+    Kc = K - col_mean[None, :] - col_mean[:, None] + all_mean        # centring in feature space
+    lam, U = np.linalg.eigh(Kc)
+    lam, U = lam[::-1][:n_comp], U[:, ::-1][:, :n_comp]               # largest first
+    model = dict(Zh=Zh, kind=kind, sigma=sigma, degree=degree, U=U, lam=lam,
+                 col_mean=col_mean, all_mean=all_mean, var=lam / (len(Zh) - 1))
+    model["limits"] = {}
+    for H in range(1, n_comp + 1):
+        t2, spe = kmspc_stats(model, Zh, H)
+        model["limits"][H] = (t2.mean() + 3 * t2.std(ddof=1), spe.mean() + 3 * spe.std(ddof=1))
+    return model
+
+
+def kmspc_stats(model, Z, H):
+    """Hotelling T2 and SPE of samples Z (m x p) for a model from kmspc_fit, using H kPCs.
+
+    t_k(x) = k_c(x)' u_k / sqrt(lam_k)                   (projection on kPC k)
+    T2(x)  = sum_k t_k(x)^2 / var(t_k)                   (var(t_k) = lam_k / (n - 1))
+    SPE(x) = k_c(x, x) - sum_k t_k(x)^2                  (squared distance to the kPC subspace)
+    """
+    args = dict(kind=model["kind"], sigma=model["sigma"], degree=model["degree"])
+    Kx = kernel_matrix(Z, Y=model["Zh"], **args)                       # m x n
+    row_mean = Kx.mean(axis=1)
+    Kxc = Kx - row_mean[:, None] - model["col_mean"][None, :] + model["all_mean"]
+    t = Kxc @ model["U"][:, :H] / np.sqrt(model["lam"][:H])
+    kxx = np.diag(kernel_matrix(Z, **args))
+    kxx_c = kxx - 2 * row_mean + model["all_mean"]
+    t2 = (t ** 2 / model["var"][:H]).sum(axis=1)
+    spe = np.maximum(kxx_c - (t ** 2).sum(axis=1), 0.0)
+    return t2, spe
+
+
+def healthy_scaling(X, healthy_rows):
+    """Columns that vary among the healthy training rows, and their healthy mean and std."""
+    keep = np.ptp(X[healthy_rows], axis=0) > 0
+    mu = X[healthy_rows][:, keep].mean(axis=0)
+    sd = X[healthy_rows][:, keep].std(axis=0, ddof=1)
+    return keep, mu, sd
+
+
+def kmspc_model(X, healthy_rows, kind, factor=None, degree=None, H_max=4):
+    """Monitoring model from raw data X and the indices of the healthy training rows:
+    drop variables constant among them, scale with their mean/std, set
+    sigma = factor * median distance (rbf / cauchy) and fit kmspc_fit."""
+    keep, mu, sd = healthy_scaling(X, healthy_rows)
+    Zh = (X[healthy_rows][:, keep] - mu) / sd
+    sigma = factor * median_distance(Zh) if kind in ("rbf", "cauchy") else None
+    model = kmspc_fit(Zh, kind, sigma=sigma, degree=degree, n_comp=H_max)
+    model.update(keep=keep, mu=mu, sd=sd)
+    return model
+
+
+def kmspc_monitor(model, X, rows, H):
+    """T2 and SPE of raw rows X[rows] under a model from kmspc_model, with H kPCs."""
+    Z = (X[rows][:, model["keep"]] - model["mu"]) / model["sd"]
+    return kmspc_stats(model, Z, H)
+
+
+def oos_limits(X, healthy_rows, groups, kind, factor=None, degree=None, H_max=4):
+    """Out-of-sample control limits: every healthy operating-point group among
+    `healthy_rows` is left out once, the model is fitted on the others, and T2 / SPE
+    of the left-out rows are pooled. Limits = mean + 3 std of the pooled values.
+
+    The training-sample limits of kmspc_fit are too tight when there are few healthy
+    samples, because a model always fits its own training samples better than new ones.
+    """
+    pooled = {H: ([], []) for H in range(1, H_max + 1)}
+    for g in np.unique(groups[healthy_rows]):
+        fit_rows = healthy_rows[groups[healthy_rows] != g]
+        out_rows = healthy_rows[groups[healthy_rows] == g]
+        model = kmspc_model(X, fit_rows, kind, factor, degree, H_max)
+        for H in pooled:
+            t2, spe = kmspc_monitor(model, X, out_rows, H)
+            pooled[H][0].extend(t2)
+            pooled[H][1].extend(spe)
+    return {H: (np.mean(t2) + 3 * np.std(t2, ddof=1), np.mean(spe) + 3 * np.std(spe, ddof=1))
+            for H, (t2, spe) in pooled.items()}
+
+
+def monitoring_rates(alarm, y_test):
+    """False-alarm rate, detection rates and rho_b for one boolean alarm vector."""
+    far = alarm[y_test == 1].mean()
+    return dict(FAR=far, gas=alarm[y_test == 2].mean(), waxing=alarm[y_test == 3].mean(),
+                rho=1 - ((1 - far) + alarm[y_test > 1].mean()) / 2)
+
+
+def cv_monitoring(X, y, groups, kind, factor=None, degree=None, H_max=4, limits="oos",
+                  n_splits=5, n_repeats=10, seed=0):
+    """Grouped CV of kernel MSPC. In every fold the model and its limits use the healthy
+    training rows only (limits="oos": leave-one-group-out limits; "train": training-sample
+    limits as in the k-mspc toolbox); all test rows are then monitored.
+
+    Returns {stat: {metric: array (n_splits * n_repeats, H_max)}} for stat in "T2", "SPE",
+    "either" (alarm if T2 or SPE is above its limit) and metric in "FAR", "gas", "waxing",
+    "rho" (rho_b = 1 - (share of healthy rows without alarm + share of faulty rows with
+    alarm) / 2).
+    """
+    out = {s: {m: [] for m in ("FAR", "gas", "waxing", "rho")} for s in ("T2", "SPE", "either")}
+    for tr, te in cv_splits(y, groups, n_splits, n_repeats, seed):
+        h_tr = tr[y[tr] == 1]
+        model = kmspc_model(X, h_tr, kind, factor, degree, H_max)
+        lims = oos_limits(X, h_tr, groups, kind, factor, degree, H_max) if limits == "oos" else model["limits"]
+        rows = {s: {m: [] for m in out[s]} for s in out}
+        for H in range(1, H_max + 1):
+            t2, spe = kmspc_monitor(model, X, te, H)
+            alarms = {"T2": t2 > lims[H][0], "SPE": spe > lims[H][1]}
+            alarms["either"] = alarms["T2"] | alarms["SPE"]
+            for s, a in alarms.items():
+                for m, val in monitoring_rates(a, y[te]).items():
+                    rows[s][m].append(val)
+        for s in out:
+            for m in out[s]:
+                out[s][m].append(rows[s][m])
+    return {s: {m: np.array(v) for m, v in d.items()} for s, d in out.items()}
