@@ -12,6 +12,9 @@ from scipy.spatial.distance import pdist
 from sklearn.decomposition import PCA, KernelPCA
 from sklearn.gaussian_process.kernels import RationalQuadratic
 from sklearn.metrics.pairwise import linear_kernel, polynomial_kernel, rbf_kernel
+from sklearn.metrics import balanced_accuracy_score, confusion_matrix
+from sklearn.model_selection import RepeatedStratifiedKFold
+from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import KernelCenterer
 
 # ---------------------------------------------------------------------------
@@ -206,3 +209,42 @@ def kpca(K):
     lam = model.eigenvalues_
     evr = lam / np.trace(KernelCenterer().fit_transform(K))
     return scores, lam, evr, model
+
+
+# ---------------------------------------------------------------------------
+# Choosing kernel settings: cross-validated balanced kNN accuracy
+# ---------------------------------------------------------------------------
+def cv_balanced_accuracy(X, y, kind, factor=None, degree=None, n_comp=(2, 3, 7),
+                         n_splits=5, n_repeats=10, k=5, seed=0):
+    """Balanced kNN accuracy on the first q kPC scores, by repeated stratified CV.
+
+    In every fold, everything is fitted on the training samples only:
+    z-scoring, the width sigma = factor * median distance (rbf / cauchy) and
+    kPCA. Test samples are scaled with the training mean/std and projected
+    with their kernel values against the training samples.
+
+    Returns {q: fold scores (n_splits * n_repeats,)} and
+    {q: confusion matrix summed over all test folds}.
+    """
+    labels = np.unique(y)
+    scores = {q: [] for q in n_comp}
+    conf = {q: np.zeros((len(labels), len(labels)), dtype=int) for q in n_comp}
+    folds = RepeatedStratifiedKFold(n_splits=n_splits, n_repeats=n_repeats, random_state=seed)
+
+    for tr, te in folds.split(X, y):
+        Z_tr, mu, sd = zscore(X[tr])
+        Z_te = (X[te] - mu) / sd
+        sigma = factor * median_distance(Z_tr) if kind in ("rbf", "cauchy") else None
+        args = dict(kind=kind, sigma=sigma, degree=degree)
+
+        model = KernelPCA(kernel="precomputed", n_components=max(n_comp))
+        T_tr = model.fit_transform(kernel_matrix(Z_tr, **args))
+        T_te = model.transform(kernel_matrix(Z_te, Y=Z_tr, **args))   # test x train kernel
+
+        for q in n_comp:
+            knn = KNeighborsClassifier(n_neighbors=k).fit(T_tr[:, :q], y[tr])
+            pred = knn.predict(T_te[:, :q])
+            scores[q].append(balanced_accuracy_score(y[te], pred))
+            conf[q] += confusion_matrix(y[te], pred, labels=labels)
+
+    return {q: np.array(v) for q, v in scores.items()}, conf

@@ -72,7 +72,7 @@ samples.
 | **M1** | `01_data_exploration.ipynb` | names, `load_meter_b`, `constant_columns` (max = min), `zscore` | assert cell passes; class-balance, class-mean and correlation figures |
 | **M2** | `02_pca_baseline.ipynb` | `pca`, `biplot` (loading or correlation arrows) | check cell (T = ZP, var(T) = λ, corr = p√λ); scree; score matrix PC1–7; loading and correlation biplots for PC1–2 … PC6–7 |
 | **M3** | `03_kpca.ipynb` | `median_distance`, `kernel_matrix`, `kpca` | linear kPCA = PCA; centring and eigenvalues match formulas; kernel matrices, scree, score plots per kernel (default settings) |
-| **M4** | `04_kernel_settings.ipynb` | `ZScore` step, CV of balanced kNN accuracy | accuracy curves over σ / degree per kernel; chosen setting per kernel; fixed random seed |
+| **M4** | `04_kernel_settings.ipynb` | `cv_balanced_accuracy` (everything refitted per fold) | accuracy curves over σ / degree per kernel; chosen setting per kernel; fixed random seed |
 | **M5** | `05_kpca_biplots.ipynb` | correlation arrows for kPCA | linear-kernel arrows match M2; biplots kPC1–2 … kPC6–7 per kernel with the chosen settings; final comparison |
 | **M6** | `report/report.md` | – | every notebook runs top to bottom; the report answers both questions |
 | *Extra* | – | healthy-constant variables on their own; PyTorch kernel learning; Matérn; T² charts | if time allows |
