@@ -70,9 +70,13 @@ def load_meter_b(path=DATA_PATH):
     return data[:, :-1], data[:, -1].astype(int)
 
 
-def constant_columns(X, y, cls=1):
-    """Indices of columns whose sample std is exactly zero within class `cls`."""
-    return np.where(X[y == cls].std(axis=0, ddof=1) == 0)[0]
+def constant_columns(X):
+    """Indices of columns that take a single value (max == min).
+
+    Tested with max - min instead of std == 0: a floating-point std of a
+    constant column can come out as ~1e-15 instead of exactly 0.
+    """
+    return np.where(np.ptp(X, axis=0) == 0)[0]
 
 
 def zscore(X):
