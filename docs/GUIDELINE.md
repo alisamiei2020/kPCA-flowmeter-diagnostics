@@ -54,10 +54,14 @@ samples.
 
 ## Choosing the kernel settings (M4)
 
-- **Criterion: balanced kNN accuracy only** (k = 5) on the first 2 kPCs (3 and 7 reported too), with
-  repeated stratified 5-fold cross-validation (10 repeats → 50 train/test splits; each sample
-  tested 10 times) and a fixed random seed. Visual separation is judged in
-  the biplots, not by a metric.
+- **Criterion: balanced kNN accuracy only** (k = 5) on the first 2 kPCs (3 and 7 reported too). Visual
+  separation is judged in the biplots, not by a metric.
+- **Grouped cross-validation (M6):** rows are blocks of repeated test points at constant flow velocity, so
+  neighbouring rows are near-duplicates. Operating-point groups (`operating_point_groups`: consecutive rows
+  of the same class with average flow velocity within 0.1 m/s; 8 healthy, 9 gas-injection, 22 waxing
+  groups) are kept together: `StratifiedGroupKFold`, 5 folds, 10 repeats with seeds 0 … 9 → 50 train/test
+  splits, each sample tested 10 times. Random CV is kept only as a comparison (it inflated the scores,
+  e.g. linear 1.000 → 0.961 on two kPCs).
 - **Everything is refitted on each training fold:** z-scoring (same `zscore`, n − 1), the median distance
   that sets σ, and kPCA. Test samples are only transformed.
 - **Grid:** σ = median distance × 2^k, k = −4 … 4 (17 values); polynomial degree d = 1 … 5.
@@ -77,8 +81,10 @@ samples.
 | **M3** | `03_kpca.ipynb` | `median_distance`, `kernel_matrix`, `kpca` | linear kPCA = PCA; centring and eigenvalues match formulas; kernel matrices, scree, score plots per kernel (default settings) |
 | **M4** | `04_kernel_settings.ipynb` | `cv_balanced_accuracy` (everything refitted per fold) | accuracy curves over σ / degree per kernel; chosen setting per kernel; fixed random seed |
 | **M5** | `05_kpca_biplots.ipynb` | `correlation_loadings`, `score_matrix`, `biplot_grid` | linear-kernel arrows match M2; kPC1–2 comparison of 4 kernels; score matrix and biplots kPC1–2 … kPC6–7 for poly d=2, Gaussian and Cauchy at default settings (option B); confusion matrices; final comparison |
-| **M6** | `report/report.md` | – | every notebook runs top to bottom; the report answers both questions |
-| *Extra* | – | healthy-constant variables on their own; PyTorch kernel learning; Matérn; T² charts | if time allows |
+| **M6** | notebooks 04 and 05 updated | `operating_point_groups`, `cv_splits`, grouped option in `cv_balanced_accuracy` | no group split between training and test; random-vs-grouped comparison; chosen settings unchanged; per-sample errors |
+| **M7** | `06_kernel_mspc.ipynb` | kernel MSPC (healthy-only kPCA, T² and SPE limits) | control charts per kernel (linear, poly, Gaussian, Cauchy); σ / degree by grid search on the monitoring loss ρ_b with grouped CV; detection and false-alarm rates |
+| **M8** | `report/report.md` | – | every notebook runs top to bottom; the report answers both questions |
+| *Extra* | – | healthy-constant variables on their own; per-variable kernel parameters | if time allows |
 
 ## Working rules
 One milestone at a time; plan → approval → build → run → show results → proposed commit message.

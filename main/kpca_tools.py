@@ -13,7 +13,7 @@ from sklearn.decomposition import PCA, KernelPCA
 from sklearn.gaussian_process.kernels import RationalQuadratic
 from sklearn.metrics.pairwise import linear_kernel, polynomial_kernel, rbf_kernel
 from sklearn.metrics import balanced_accuracy_score, confusion_matrix
-from sklearn.model_selection import RepeatedStratifiedKFold
+from sklearn.model_selection import RepeatedStratifiedKFold, StratifiedGroupKFold
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import KernelCenterer
 
@@ -271,8 +271,39 @@ def kpca(K):
 # ---------------------------------------------------------------------------
 # Choosing kernel settings: cross-validated balanced kNN accuracy
 # ---------------------------------------------------------------------------
+def operating_point_groups(X, y, tol=0.1):
+    """Group number for every row: consecutive rows of the same class whose average flow
+    velocity differs by at most `tol` (m/s) belong to the same operating point.
+
+    Rows in the data file are blocks of repeated test points at constant flow velocity
+    (notebook 04), so neighbouring rows are near-duplicates and must not be split
+    between training and test.
+    """
+    v = X[:, FEATURE_NAMES.index("Average flow velocity")]
+    groups = np.zeros(len(y), dtype=int)
+    for i in range(1, len(y)):
+        new = y[i] != y[i - 1] or abs(v[i] - v[i - 1]) > tol
+        groups[i] = groups[i - 1] + new
+    return groups
+
+
+def cv_splits(y, groups=None, n_splits=5, n_repeats=10, seed=0):
+    """Train/test index pairs of repeated stratified K-fold CV.
+
+    With `groups`, whole groups go to either training or test (StratifiedGroupKFold,
+    reshuffled with seed + r in repeat r); otherwise ordinary RepeatedStratifiedKFold.
+    """
+    if groups is None:
+        yield from RepeatedStratifiedKFold(n_splits=n_splits, n_repeats=n_repeats,
+                                           random_state=seed).split(y, y)
+        return
+    for r in range(n_repeats):
+        folds = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=seed + r)
+        yield from folds.split(y, y, groups)
+
+
 def cv_balanced_accuracy(X, y, kind, factor=None, degree=None, n_comp=(2, 3, 7),
-                         n_splits=5, n_repeats=10, k=5, seed=0):
+                         n_splits=5, n_repeats=10, k=5, seed=0, groups=None):
     """Balanced kNN accuracy on the first q kPC scores, by repeated stratified CV.
 
     In every fold, everything is fitted on the training samples only:
@@ -280,15 +311,17 @@ def cv_balanced_accuracy(X, y, kind, factor=None, degree=None, n_comp=(2, 3, 7),
     kPCA. Test samples are scaled with the training mean/std and projected
     with their kernel values against the training samples.
 
-    Returns {q: fold scores (n_splits * n_repeats,)} and
-    {q: confusion matrix summed over all test folds}.
+    With `groups`, whole groups are kept together (grouped CV, see cv_splits).
+
+    Returns {q: split scores (n_splits * n_repeats,)}, {q: confusion matrix summed
+    over all test folds} and the number of wrong predictions per sample (for q = n_comp[0]).
     """
     labels = np.unique(y)
     scores = {q: [] for q in n_comp}
     conf = {q: np.zeros((len(labels), len(labels)), dtype=int) for q in n_comp}
-    folds = RepeatedStratifiedKFold(n_splits=n_splits, n_repeats=n_repeats, random_state=seed)
+    wrong = np.zeros(len(y), dtype=int)
 
-    for tr, te in folds.split(X, y):
+    for tr, te in cv_splits(y, groups, n_splits, n_repeats, seed):
         Z_tr, mu, sd = zscore(X[tr])
         Z_te = (X[te] - mu) / sd
         sigma = factor * median_distance(Z_tr) if kind in ("rbf", "cauchy") else None
@@ -303,5 +336,7 @@ def cv_balanced_accuracy(X, y, kind, factor=None, degree=None, n_comp=(2, 3, 7),
             pred = knn.predict(T_te[:, :q])
             scores[q].append(balanced_accuracy_score(y[te], pred))
             conf[q] += confusion_matrix(y[te], pred, labels=labels)
+            if q == n_comp[0]:
+                wrong[te] += pred != y[te]
 
-    return {q: np.array(v) for q, v in scores.items()}, conf
+    return {q: np.array(v) for q, v in scores.items()}, conf, wrong
