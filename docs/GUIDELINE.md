@@ -40,18 +40,30 @@ that call it.
 
 All kernels and kPCA come from scikit-learn; we only write a thin wrapper and the plotting.
 
-| Kernel | Formula | Source in scikit-learn |
+| Kernel | Formula | Source in scikit-learn (via `kpca_tools.kernel_matrix`) |
 |---|---|---|
-| Linear | k = xᵀy | `KernelPCA(kernel="linear")`: the same as ordinary PCA, used as the reference |
-| Polynomial | k = (γ xᵀy + c)^d | `KernelPCA(kernel="poly", degree=d, gamma=γ, coef0=c)` |
-| Gaussian (RBF) | k = exp(−‖x−y‖² / 2σ²) | `KernelPCA(kernel="rbf", gamma=1/(2σ²))` |
-| Cauchy | k = 1 / (1 + ‖x−y‖²/σ²) | `RationalQuadratic(length_scale=ℓ, alpha=1)` with σ² = 2ℓ², passed as `kernel="precomputed"` |
-| *(extra)* Matérn | see paper | `sklearn.gaussian_process.kernels.Matern`, also precomputed |
+| Linear | k = xᵀy | `linear_kernel`: the same as ordinary PCA, used as an exact check |
+| Polynomial | k = (γ xᵀy + c)^d | `polynomial_kernel` (default γ = 1/p, c = 1) |
+| Gaussian (RBF) | k = exp(−‖x−y‖² / 2σ²) | `rbf_kernel` with γ = 1/(2σ²) |
+| Cauchy | k = 1 / (1 + ‖x−y‖²/σ²) | `RationalQuadratic(length_scale=σ/√2, alpha=1)` |
+| *(extra)* Matérn | see paper | `sklearn.gaussian_process.kernels.Matern` |
 
-`KernelPCA` centres the kernel matrix and does the eigendecomposition itself. In the notebook we explain
-the centring formula K_c = (I − 1/n)K(I − 1/n), and check once that our understanding is right: the
-linear-kernel scores must equal PCA scores. The width σ is started at the median pairwise distance of
-the autoscaled data (the "median heuristic"), then varied.
+kPCA itself is `KernelPCA(kernel="precomputed")`, which centres the kernel matrix
+(K_c = (I − 1/n)K(I − 1/n)) and does the eigendecomposition. Default width: σ = median distance between
+samples.
+
+## Choosing the kernel settings (M4)
+
+- **Criterion: balanced kNN accuracy only** (k = 5) on the first 2 kPCs (3 and 7 reported too), with
+  repeated stratified 5-fold cross-validation and a fixed random seed. Visual separation is judged in
+  the biplots, not by a metric.
+- **Everything is refitted on each training fold:** z-scoring (same `zscore`, n − 1), the median distance
+  that sets σ, and kPCA. Test samples are only transformed.
+- **Grid:** σ = median distance × 2^k, k = −4 … 4 (17 values); polynomial degree d = 1 … 5.
+- **Tie rule:** among settings within one standard error of the best accuracy, take the smoothest
+  (largest σ, lowest degree).
+- **Limitation:** choosing and scoring on the same cross-validation is slightly optimistic; nested CV
+  is an optional extra.
 
 ## Milestones
 
@@ -59,9 +71,9 @@ the autoscaled data (the "median heuristic"), then varied.
 |---|---|---|---|
 | **M1** | `01_data_exploration.ipynb` | names, `load_meter_b`, `constant_columns` (max = min), `zscore` | assert cell passes; class-balance, class-mean and correlation figures |
 | **M2** | `02_pca_baseline.ipynb` | `pca`, `biplot` (loading or correlation arrows) | check cell (T = ZP, var(T) = λ, corr = p√λ); scree; score matrix PC1–7; loading and correlation biplots for PC1–2 … PC6–7 |
-| **M3** | `03_kpca.ipynb` | `kernel_matrix`, `kpca` wrapper around `KernelPCA` | linear kPCA = PCA scores; centred kernel matrix has rows summing to 0; score plots for each kernel |
-| **M4** | `04_kpca_biplots.ipynb` | `correlation_loadings` (corr. of each variable with each kPC) | for the linear kernel, the arrows match the M2 PCA loadings; multiple biplots for each kernel |
-| **M5** | `05_kernel_comparison.ipynb` | separation scores: silhouette, Fisher ratio, CV k-NN accuracy | comparison table and figure over kernel settings; fixed random seed |
+| **M3** | `03_kpca.ipynb` | `median_distance`, `kernel_matrix`, `kpca` | linear kPCA = PCA; centring and eigenvalues match formulas; kernel matrices, scree, score plots per kernel (default settings) |
+| **M4** | `04_kernel_settings.ipynb` | `ZScore` step, CV of balanced kNN accuracy | accuracy curves over σ / degree per kernel; chosen setting per kernel; fixed random seed |
+| **M5** | `05_kpca_biplots.ipynb` | correlation arrows for kPCA | linear-kernel arrows match M2; biplots kPC1–2 … kPC6–7 per kernel with the chosen settings; final comparison |
 | **M6** | `report/report.md` | – | every notebook runs top to bottom; the report answers both questions |
 | *Extra* | – | healthy-constant variables on their own; PyTorch kernel learning; Matérn; T² charts | if time allows |
 

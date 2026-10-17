@@ -8,7 +8,11 @@ from pathlib import Path
 import numpy as np
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.patches import Circle
-from sklearn.decomposition import PCA
+from scipy.spatial.distance import pdist
+from sklearn.decomposition import PCA, KernelPCA
+from sklearn.gaussian_process.kernels import RationalQuadratic
+from sklearn.metrics.pairwise import linear_kernel, polynomial_kernel, rbf_kernel
+from sklearn.preprocessing import KernelCenterer
 
 # ---------------------------------------------------------------------------
 # Data description (UCI "Ultrasonic flowmeter diagnostics", Meter B)
@@ -156,3 +160,49 @@ def biplot(ax, T, A, y, names, pcs=(0, 1), n_arrows=15, circle=False, evr=None):
     ax.set_xlabel(lab[0])
     ax.set_ylabel(lab[1])
     return scale
+
+
+# ---------------------------------------------------------------------------
+# Kernel PCA
+# ---------------------------------------------------------------------------
+def median_distance(Z):
+    """Median Euclidean distance over all pairs of samples (rows of Z)."""
+    return np.median(pdist(Z))
+
+
+def kernel_matrix(Z, kind, Y=None, sigma=None, degree=None, gamma=None, coef0=1.0):
+    """Kernel matrix k(z_i, y_j) between the rows of Z and Y (Y = Z if omitted).
+
+    kind: "linear"     x'y
+          "poly"       (gamma x'y + coef0)^degree      (gamma defaults to 1/p)
+          "rbf"        exp(-||x - y||^2 / (2 sigma^2))
+          "cauchy"     1 / (1 + ||x - y||^2 / sigma^2)
+    All kernels come from scikit-learn. The Cauchy kernel is the rational
+    quadratic kernel with alpha = 1 and length scale l = sigma / sqrt(2),
+    because (1 + d^2 / (2 l^2))^-1 = (1 + d^2 / sigma^2)^-1.
+    """
+    if kind == "linear":
+        return linear_kernel(Z, Y)
+    if kind == "poly":
+        return polynomial_kernel(Z, Y, degree=degree, gamma=gamma, coef0=coef0)
+    if kind == "rbf":
+        return rbf_kernel(Z, Y, gamma=1 / (2 * sigma ** 2))
+    if kind == "cauchy":
+        return RationalQuadratic(length_scale=sigma / np.sqrt(2), alpha=1.0)(Z, Y)
+    raise ValueError(f"unknown kernel {kind!r}")
+
+
+def kpca(K):
+    """Kernel PCA of a precomputed (uncentred) training kernel matrix K (n x n).
+
+    scikit-learn centres K, eigendecomposes the centred matrix Kc and returns
+    scores = eigenvector * sqrt(eigenvalue). Components with zero eigenvalue
+    are dropped. Returns scores (n x k), eigenvalues (k,), the explained
+    variance ratio lambda_k / trace(Kc) (share of the feature-space variance),
+    and the fitted model (to project new samples later).
+    """
+    model = KernelPCA(kernel="precomputed")
+    scores = model.fit_transform(K)
+    lam = model.eigenvalues_
+    evr = lam / np.trace(KernelCenterer().fit_transform(K))
+    return scores, lam, evr, model
