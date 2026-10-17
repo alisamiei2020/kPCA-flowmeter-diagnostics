@@ -58,7 +58,7 @@ the autoscaled data (the "median heuristic"), then varied.
 | # | Notebook | Adds to `kpca_tools.py` | Verified by |
 |---|---|---|---|
 | **M1** | `01_data_exploration.ipynb` | names, `load_meter_b`, `constant_columns` (max = min), `zscore` | assert cell passes; class-balance, class-mean and correlation figures |
-| **M2** | `02_pca_baseline.ipynb` | `biplot` (scores + loading arrows) | our PCA matches `sklearn.decomposition.PCA` up to sign; scree plot; biplots PC1–2, 1–3, 2–3 |
+| **M2** | `02_pca_baseline.ipynb` | `pca`, `biplot` (loading or correlation arrows) | check cell (T = ZP, var(T) = λ, corr = p√λ); scree; score matrix PC1–7; loading and correlation biplots for PC1–2 … PC6–7 |
 | **M3** | `03_kpca.ipynb` | `kernel_matrix`, `kpca` wrapper around `KernelPCA` | linear kPCA = PCA scores; centred kernel matrix has rows summing to 0; score plots for each kernel |
 | **M4** | `04_kpca_biplots.ipynb` | `correlation_loadings` (corr. of each variable with each kPC) | for the linear kernel, the arrows match the M2 PCA loadings; multiple biplots for each kernel |
 | **M5** | `05_kernel_comparison.ipynb` | separation scores: silhouette, Fisher ratio, CV k-NN accuracy | comparison table and figure over kernel settings; fixed random seed |
